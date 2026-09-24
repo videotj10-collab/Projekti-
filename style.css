@@ -19,6 +19,7 @@
 * { box-sizing: border-box; }
 html {
   height: 100%;
+  overflow: hidden;
   scroll-padding-top: env(safe-area-inset-top, 0px);
 }
 body {
@@ -35,6 +36,11 @@ body {
   position: relative;
   width: 100%;
   height: 100%;
+  /* Piilossa oleva alapaneeli jää ruudun alapuolelle. Rajataan se pois,
+     jottei sivu ala vieriä; overflow: clip estää myös ohjelmallisen
+     vierityksen (esim. kun kenttään kohdistetaan alapaneelissa). */
+  overflow: hidden;
+  overflow: clip;
   max-width: 480px;
   margin: 0 auto;
   display: flex;
@@ -76,6 +82,7 @@ body {
   flex: 1;
   position: relative;
   overflow: hidden;
+  overflow: clip;
 }
 .screen {
   position: absolute;
