@@ -783,3 +783,115 @@ button.tx-row:active { background: var(--surface-raised); }
 .tx-tag.disputed { background: rgba(191,90,242,0.16); border-color: rgba(191,90,242,0.34); color: #d9a1ff; }
 
 .tx-amount.struck { text-decoration: line-through; color: var(--text-dim); }
+
+/* ---------- tunnistautuminen ---------- */
+.auth-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0,0,0,0.97);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+.auth-screen.show { opacity: 1; }
+/* Luokan display: flex kumoaisi selaimen [hidden]-säännön, joten piilotus
+   on kirjoitettava auki. */
+.auth-screen[hidden] { display: none; }
+.auth-inner {
+  width: 100%;
+  max-width: 320px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.auth-icon {
+  font-size: 42px;
+  line-height: 1;
+  margin-bottom: 4px;
+  transition: transform 0.3s ease;
+}
+.auth-screen.verifying .auth-icon { animation: authpulse 0.9s ease-in-out infinite; }
+@keyframes authpulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.12); opacity: 0.6; }
+}
+.auth-inner h2 { font-size: 21px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.auth-sub { font-size: 14px; color: var(--text-dim); margin: 0 0 8px; }
+.auth-error {
+  font-size: 13.5px;
+  color: #ff938c;
+  background: rgba(255,69,58,0.12);
+  border: 1px solid rgba(255,69,58,0.3);
+  border-radius: 10px;
+  padding: 9px 12px;
+  margin: 0 0 4px;
+}
+.auth-hint {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  margin: 14px 0 0;
+  line-height: 1.5;
+}
+.text-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 15px;
+  font-family: var(--font);
+  padding: 12px;
+  cursor: pointer;
+  border-radius: 10px;
+}
+.text-btn:active { opacity: 0.7; }
+
+/* ---------- PIN-näppäimistö ---------- */
+.pin-area { margin-bottom: 8px; }
+.pin-area.shake { animation: pinshake 0.4s ease; }
+@keyframes pinshake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-9px); }
+  40% { transform: translateX(9px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(5px); }
+}
+.pin-dots {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 6px 0 22px;
+}
+.pin-dot {
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-dim);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.pin-dot.filled { background: var(--text); border-color: var(--text); }
+.pin-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.pin-key {
+  height: 62px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 23px;
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.pin-key:active { background: var(--border); }
+.pin-key.placeholder { background: none; border: none; cursor: default; }
+
+.ghost-btn.inline { width: auto; padding: 10px 16px; font-size: 14px; margin-top: 0; }

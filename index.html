@@ -139,6 +139,28 @@
         </div>
       </div>
 
+      <div class="section-label">Turvallisuus</div>
+      <div class="settings-group">
+        <div class="settings-row">
+          <span class="settings-label">Sovelluslukko
+            <span class="settings-sub">Vaadi tunnistautuminen avattaessa</span>
+          </span>
+          <button class="toggle" id="setLock" role="switch" aria-label="Sovelluslukko"></button>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">Vahvista maksut
+            <span class="settings-sub">Tunnistautuminen jokaisen maksun yhteydessä</span>
+          </span>
+          <button class="toggle" id="setPayAuth" role="switch" aria-label="Vahvista maksut"></button>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">Lukitse heti
+            <span class="settings-sub">Sulje lompakko tältä laitteelta</span>
+          </span>
+          <button class="ghost-btn inline" id="lockNowBtn">Lukitse</button>
+        </div>
+      </div>
+
       <div class="section-label">Demo</div>
       <button class="danger-btn" id="resetBtn">Palauta demon oletustiedot</button>
 
@@ -197,12 +219,32 @@
     <div class="sheet-body" id="sheetBody"></div>
   </div>
 
+
+  <!-- TUNNISTAUTUMINEN (sovelluslukko ja uudelleentunnistautuminen) -->
+  <div class="auth-screen" id="authScreen" role="dialog" aria-modal="true"
+       aria-labelledby="authTitle" hidden>
+    <div class="auth-inner">
+      <div class="auth-icon" id="authIcon" aria-hidden="true">🔒</div>
+      <h2 id="authTitle">Lompakko on lukittu</h2>
+      <p class="auth-sub" id="authSub">Tunnistaudu avataksesi lompakon</p>
+      <p class="auth-error" id="authError" role="alert" hidden></p>
+      <div class="pin-area" id="authPinArea" hidden></div>
+      <button class="solid-btn" id="authBioBtn">Tunnistaudu</button>
+      <button class="text-btn" id="authPinBtn">Käytä PIN-koodia</button>
+      <button class="text-btn" id="authCancelBtn" hidden>Peruuta</button>
+      <p class="auth-hint">Demo: PIN-koodi on <strong>1234</strong>. Oikeassa
+      sovelluksessa tunnistautuminen tehtäisiin laitteen suojatussa
+      elementissä, eikä koodia säilytettäisi sovelluksessa.</p>
+    </div>
+  </div>
+
   <!-- ILMOITUS -->
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 </div>
 
 <script src="money.js"></script>
+<script src="auth.js"></script>
 <script src="cards.js"></script>
 <script src="app.js"></script>
 </body>

@@ -17,7 +17,15 @@
     return {
       version: 3,
       user: { name: 'Mika Grönqvist', avatar: '🦊' },
-      settings: { hideBalance: false, currency: 'suffix' },
+      settings: {
+        hideBalance: false,
+        currency: 'suffix',
+        lockEnabled: true,
+        requireAuthForPayment: true
+      },
+      /* Demossa PIN on tilassa selkotekstinä. Oikeassa sovelluksessa
+       * tunnistautuminen tehtäisiin laitteen suojatussa elementissä. */
+      security: { pin: '1234' },
       cards: cards,
       defaultCardId: cards[0].id,
       activeCardId: cards[0].id,
@@ -35,6 +43,7 @@
       saved = migrate(saved);
       saved.user = saved.user || base.user;
       saved.settings = Object.assign({}, base.settings, saved.settings || {});
+      saved.security = Object.assign({}, base.security, saved.security || {});
       saved.tx = Array.isArray(saved.tx) ? saved.tx : [];
       if (!findCard(saved.cards, saved.defaultCardId)) saved.defaultCardId = saved.cards[0].id;
       if (!findCard(saved.cards, saved.activeCardId)) saved.activeCardId = saved.defaultCardId;
@@ -184,6 +193,36 @@
       toastEl.className = 'toast';
     }, 2600);
   }
+
+  /* ================= TUNNISTAUTUMINEN ================= */
+
+  Auth.init({
+    getPin: function () { return state.security.pin; },
+    onUnlock: function () { renderAll(); }
+  });
+
+  /* Arkaluonteiset toimet vaativat uudelleentunnistautumisen. Peruutus ei ole
+   * virhe, joten se niellään hiljaisesti. */
+  function withAuth(reason, sub, action) {
+    Auth.require(reason, sub).then(function () {
+      action();
+    }).catch(function () {
+      toast('Toiminto peruutettiin');
+    });
+  }
+
+  function lockNow() {
+    if (Auth.isBusy()) return;
+    Auth.lockApp();
+  }
+
+  /* Sovellus lukkiutuu, kun se siirtyy taustalle. */
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden' && state.settings.lockEnabled) {
+      closeSheet();
+      lockNow();
+    }
+  });
 
   /* ================= ALAPANEELI (SHEET) ================= */
 
@@ -571,14 +610,36 @@
       });
 
       body.querySelector('#cSave').addEventListener('click', function () {
-        var limitCents = Money.parse(body.querySelector('#cLimit').value);
-        card.label = body.querySelector('#cName').value.trim();
-        card.limitCents = !limitCents || limitCents <= 0 ? null : limitCents;
-        card.frozen = frozen;
-        saveState();
-        renderAll();
-        closeSheet();
-        toast(cardTitle(card) + (card.frozen ? ' jäädytetty' : ' tallennettu'), 'ok');
+        var parsed = Money.parse(body.querySelector('#cLimit').value);
+        var newLimit = !parsed || parsed <= 0 ? null : parsed;
+        var newName = body.querySelector('#cName').value.trim();
+
+        /* Jäädytyksen vapautus ja kulukaton nostaminen heikentävät suojaa,
+         * joten ne vaativat tunnistautumisen. Kiristäminen ei vaadi. */
+        var unfreezing = card.frozen && !frozen;
+        var loosening = newLimit === null
+          ? card.limitCents !== null
+          : (card.limitCents !== null && newLimit > card.limitCents);
+
+        var apply = function () {
+          card.label = newName;
+          card.limitCents = newLimit;
+          card.frozen = frozen;
+          saveState();
+          renderAll();
+          closeSheet();
+          toast(cardTitle(card) + (card.frozen ? ' jäädytetty' : ' tallennettu'), 'ok');
+        };
+
+        if (unfreezing || loosening) {
+          withAuth(
+            unfreezing ? 'Vapauta kortti' : 'Nosta kulukattoa',
+            'Suojauksen heikentäminen vaatii tunnistautumisen',
+            apply
+          );
+        } else {
+          apply();
+        }
       });
 
       if (!isDefault) {
@@ -592,7 +653,9 @@
       }
 
       body.querySelector('#deleteCardBtn').addEventListener('click', function () {
-        removeCard(card.id);
+        withAuth('Poista kortti', 'Kortin poistaminen vaatii tunnistautumisen', function () {
+          removeCard(card.id);
+        });
       });
     });
   }
@@ -695,7 +758,9 @@
     });
   }
 
-  document.getElementById('addCardBtn').addEventListener('click', openAddCard);
+  document.getElementById('addCardBtn').addEventListener('click', function () {
+    withAuth('Lisää kortti', 'Kortin lisääminen lompakkoon vaatii tunnistautumisen', openAddCard);
+  });
 
   /* ================= NAVIGOINTI ================= */
 
@@ -873,6 +938,11 @@
   var hideToggle = document.getElementById('setHideBalance');
   var currencyRow = document.getElementById('setCurrency');
 
+  function setToggle(node, on) {
+    node.classList.toggle('on', on);
+    node.setAttribute('aria-checked', String(on));
+  }
+
   function renderSettings() {
     if (document.activeElement !== nameInput) nameInput.value = state.user.name;
 
@@ -886,8 +956,9 @@
         esc(cardTitle(c)) + ' · •••• ' + esc(c.last4) + '</option>';
     }).join('');
 
-    hideToggle.classList.toggle('on', state.settings.hideBalance);
-    hideToggle.setAttribute('aria-checked', String(state.settings.hideBalance));
+    setToggle(hideToggle, state.settings.hideBalance);
+    setToggle(lockToggle, state.settings.lockEnabled);
+    setToggle(payAuthToggle, state.settings.requireAuthForPayment);
 
     currencyRow.querySelectorAll('button').forEach(function (b) {
       b.classList.toggle('active', b.dataset.currency === state.settings.currency);
@@ -929,6 +1000,24 @@
     renderAll();
   });
 
+  var lockToggle = document.getElementById('setLock');
+  var payAuthToggle = document.getElementById('setPayAuth');
+
+  lockToggle.addEventListener('click', function () {
+    state.settings.lockEnabled = !state.settings.lockEnabled;
+    saveState();
+    renderSettings();
+    toast(state.settings.lockEnabled ? 'Sovelluslukko käytössä' : 'Sovelluslukko pois käytöstä');
+  });
+
+  payAuthToggle.addEventListener('click', function () {
+    state.settings.requireAuthForPayment = !state.settings.requireAuthForPayment;
+    saveState();
+    renderSettings();
+  });
+
+  document.getElementById('lockNowBtn').addEventListener('click', lockNow);
+
   document.getElementById('resetBtn').addEventListener('click', function () {
     if (!window.confirm('Palautetaanko demon oletustiedot? Kortit ja tapahtumat nollataan.')) return;
     state = defaultState();
@@ -952,6 +1041,8 @@
 
   renderAll();
   restoreSettlements();
+
+  if (state.settings.lockEnabled) lockNow();
 
   /* ================= PWA ================= */
 
