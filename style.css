@@ -712,3 +712,30 @@ button.avatar { cursor: pointer; font-size: 17px; padding: 0; }
   text-align: center;
   padding: 0 32px;
 }
+
+/* ---------- historian suodatus ---------- */
+.chip-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+  scrollbar-width: none;
+}
+.chip-row::-webkit-scrollbar { display: none; }
+.chip {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 13.5px;
+  font-family: var(--font);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.chip.active { background: var(--text); color: #000; border-color: transparent; font-weight: 600; }
+.chip .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }

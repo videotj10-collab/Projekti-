@@ -272,18 +272,53 @@
     el.innerHTML = '<div class="tx-list">' + recent.map(txRowHTML).join('') + '</div>';
   }
 
+  /* Historian suodatus: 'kaikki' tai kortin id. */
+  var historyFilter = 'kaikki';
+  var filterRow = document.getElementById('historyFilter');
+
+  function filteredTx() {
+    if (historyFilter === 'kaikki') return state.tx;
+    return state.tx.filter(function (t) { return t.cardId === historyFilter; });
+  }
+
+  function renderHistoryFilter() {
+    var chips = [{ id: 'kaikki', title: 'Kaikki kortit', color: null }].concat(
+      state.cards.map(function (c) {
+        return { id: c.id, title: cardTitle(c), color: Cards.getPalette(c.paletteId).from };
+      })
+    );
+    filterRow.innerHTML = chips.map(function (c) {
+      var dot = c.color ? '<span class="dot" style="background:' + c.color + '"></span>' : '';
+      return '<button class="chip' + (c.id === historyFilter ? ' active' : '') + '" data-filter="' + c.id + '">' +
+        dot + esc(c.title) + '</button>';
+    }).join('');
+  }
+
+  filterRow.addEventListener('click', function (e) {
+    var chip = e.target.closest('.chip');
+    if (!chip) return;
+    historyFilter = chip.dataset.filter;
+    renderHistoryFilter();
+    renderHistory();
+  });
+
   function renderHistory() {
     var sub = document.getElementById('historySub');
     var list = document.getElementById('historyList');
-    var rows = state.tx;
+    var rows = filteredTx();
 
     if (rows.length === 0) {
-      sub.textContent = 'Ei vielä tapahtumia';
+      sub.textContent = historyFilter === 'kaikki'
+        ? 'Ei vielä tapahtumia'
+        : 'Ei tapahtumia tällä kortilla';
       list.innerHTML = '<div class="empty-state"><div class="emoji">📄</div>' +
         '<p>Tapahtumat näkyvät täällä maksun jälkeen.</p></div>';
       return;
     }
-    sub.textContent = rows.length + (rows.length === 1 ? ' tapahtuma' : ' tapahtumaa');
+
+    var total = rows.reduce(function (sum, t) { return sum + t.amount; }, 0);
+    sub.textContent = rows.length + (rows.length === 1 ? ' tapahtuma' : ' tapahtumaa') +
+      ' · yhteensä ' + fmtMoney(total);
 
     var groups = {};
     var order = [];
@@ -427,6 +462,7 @@
     state.cards = state.cards.filter(function (c) { return c.id !== cardId; });
     if (state.defaultCardId === cardId) state.defaultCardId = state.cards[0].id;
     if (state.activeCardId === cardId) state.activeCardId = state.defaultCardId;
+    if (historyFilter === cardId) historyFilter = 'kaikki';
     saveState();
     renderAll();
     closeSheet();
@@ -764,6 +800,7 @@
     renderStack();
     renderBalance();
     renderRecent();
+    renderHistoryFilter();
     renderHistory();
     renderCardList();
     renderSettings();
