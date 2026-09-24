@@ -807,4 +807,16 @@
   }
 
   renderAll();
+
+  /* ================= PWA ================= */
+
+  /* Service worker vaatii http(s)-yhteyden, joten se ohitetaan, jos sivu
+   * avataan suoraan tiedostojärjestelmästä (file://). */
+  if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function (err) {
+        console.warn('Service workerin rekisteröinti epäonnistui:', err);
+      });
+    });
+  }
 })();
