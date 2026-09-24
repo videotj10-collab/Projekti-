@@ -31,6 +31,18 @@
       <div id="recentTx"></div>
     </div>
 
+    <!-- KORTIT -->
+    <div class="screen" id="screen-cards">
+      <div class="history-header">
+        <h2>Kortit</h2>
+        <div class="history-sub" id="cardsSub">Hallitse lompakon kortteja</div>
+      </div>
+      <div id="cardList"></div>
+      <button class="ghost-btn" id="addCardBtn">+ Lisää kortti</button>
+      <p class="disclaimer">Kaikki kortit ovat simuloituja demokortteja. Pankkien nimet
+      ovat pelkkää tekstiä — ei oikeita logoja, tunnuksia tai maksuliikennettä.</p>
+    </div>
+
     <!-- HISTORIA -->
     <div class="screen" id="screen-history">
       <div class="history-header">
@@ -82,6 +94,10 @@
       <span class="icon">◧</span>
       <span class="label">Lompakko</span>
     </button>
+    <button class="navbtn" data-screen="cards">
+      <span class="icon">▤</span>
+      <span class="label">Kortit</span>
+    </button>
     <button class="navbtn" data-screen="history">
       <span class="icon">≡</span>
       <span class="label">Historia</span>
@@ -104,6 +120,20 @@
     <div class="tap-amount" id="tapAmount"></div>
     <button class="tap-cancel" id="tapCancel">Peruuta</button>
   </div>
+
+  <!-- ALAPANEELI (lomakkeet ja valinnat) -->
+  <div class="sheet-backdrop" id="sheetBackdrop"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="sheet-grip"></div>
+    <div class="sheet-head">
+      <h3 id="sheetTitle">Otsikko</h3>
+      <button class="sheet-close" id="sheetClose" aria-label="Sulje">✕</button>
+    </div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+
+  <!-- ILMOITUS -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 </div>
 
