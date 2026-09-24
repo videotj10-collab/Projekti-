@@ -1039,3 +1039,11 @@ button.tx-row:active { background: var(--surface-raised); }
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---------- yksityisyys taustalla ---------- */
+/* Sovellusvalitsimen esikatselukuvaan ei saa jäädä saldoja näkyviin. */
+#app.privacy-blur .screens,
+#app.privacy-blur .topbar {
+  filter: blur(18px);
+  transition: filter 0.1s ease;
+}

@@ -211,7 +211,10 @@
 
   Auth.init({
     getPin: function () { return state.security.pin; },
-    onUnlock: function () { renderAll(); }
+    onUnlock: function () {
+      document.getElementById('app').classList.remove('privacy-blur');
+      renderAll();
+    }
   });
 
   /* Arkaluonteiset toimet vaativat uudelleentunnistautumisen. Peruutus ei ole
@@ -229,12 +232,30 @@
     Auth.lockApp();
   }
 
-  /* Sovellus lukkiutuu, kun se siirtyy taustalle. */
+  /* Sovellus lukkiutuu ja saldot sumennetaan, kun se siirtyy taustalle.
+   * Juuri tämä näkymä päätyy käyttöjärjestelmän sovellusvalitsimeen. */
+  var appEl = document.getElementById('app');
+
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'hidden' && state.settings.lockEnabled) {
-      closeSheet();
-      lockNow();
+    if (document.visibilityState === 'hidden') {
+      appEl.classList.add('privacy-blur');
+      if (state.settings.lockEnabled) {
+        closeSheet();
+        lockNow();
+      }
+      return;
     }
+    if (!state.settings.lockEnabled || !Auth.isLocked()) {
+      appEl.classList.remove('privacy-blur');
+    }
+  });
+
+  window.addEventListener('blur', function () {
+    if (state.settings.blurOnBackground !== false) appEl.classList.add('privacy-blur');
+  });
+
+  window.addEventListener('focus', function () {
+    if (!Auth.isLocked()) appEl.classList.remove('privacy-blur');
   });
 
   /* ================= ALAPANEELI (SHEET) ================= */
@@ -915,6 +936,9 @@
         (isDefault ? 'Tämä on oletuskortti' : 'Aseta oletuskortiksi') +
       '</button>' +
       '<div style="height:10px"></div>' +
+      '<button class="ghost-btn" id="showDetailsBtn">Näytä kortin tiedot</button>' +
+      '<div id="cardDetails"></div>' +
+      '<div style="height:10px"></div>' +
       '<button class="ghost-btn" id="archiveBtn">' +
         (card.archived ? 'Palauta lompakkoon' : 'Arkistoi kortti') +
       '</button>' +
@@ -964,6 +988,12 @@
         }
       });
 
+      body.querySelector('#showDetailsBtn').addEventListener('click', function () {
+        withAuth('Näytä kortin tiedot', 'Korttitiedot näytetään vain tunnistautumisen jälkeen', function () {
+          revealCardDetails(card, body);
+        });
+      });
+
       body.querySelector('#archiveBtn').addEventListener('click', function () {
         toggleArchive(card.id);
       });
@@ -984,6 +1014,48 @@
         });
       });
     });
+  }
+
+  /* Korttitiedot näytetään vain hetken. Täyttä korttinumeroa ei ole
+   * tallennettu lainkaan: lompakossa on vain maksutunnus ja neljä viimeistä
+   * numeroa, kuten oikeassakin tokenisoidussa lompakossa. */
+  var detailsTimer = null;
+
+  function revealCardDetails(card, body) {
+    var box = body.querySelector('#cardDetails');
+    if (!box) return;
+    var secondsLeft = 15;
+
+    function draw() {
+      box.innerHTML =
+        '<div class="receipt-list" style="margin-top:10px">' +
+          '<div class="receipt-row"><span>Kortinhaltija</span><span>' + esc(card.holder) + '</span></div>' +
+          '<div class="receipt-row"><span>Numero</span><span>•••• •••• •••• ' + esc(card.last4) + '</span></div>' +
+          '<div class="receipt-row"><span>Voimassa</span><span>' + esc(card.expiry) + '</span></div>' +
+          '<div class="receipt-row"><span>Maksutunnus</span><span>' + esc(card.token) + '</span></div>' +
+        '</div>' +
+        '<p class="field-hint">Tiedot piilotetaan ' + secondsLeft + ' sekunnin kuluttua. ' +
+        'Täyttä korttinumeroa ei säilytetä laitteella — maksut kulkevat maksutunnuksella, ' +
+        'jonka voi mitätöidä korttia sulkematta.</p>';
+    }
+
+    draw();
+    clearInterval(detailsTimer);
+    detailsTimer = setInterval(function () {
+      secondsLeft -= 1;
+      if (secondsLeft <= 0) {
+        clearInterval(detailsTimer);
+        detailsTimer = null;
+        if (box.isConnected) box.innerHTML = '';
+        return;
+      }
+      if (!box.isConnected) {
+        clearInterval(detailsTimer);
+        detailsTimer = null;
+        return;
+      }
+      draw();
+    }, 1000);
   }
 
   /* Arkistointi piilottaa kortin lompakosta mutta säilyttää historian. */
