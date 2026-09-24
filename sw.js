@@ -2,11 +2,12 @@
  * Sovelluskuori tallennetaan välimuistiin asennuksessa ja tarjoillaan
  * ensisijaisesti välimuistista, jotta demo toimii myös ilman verkkoa. */
 
-var CACHE = 'lompakko-v1';
+var CACHE = 'lompakko-v2';
 var SHELL = [
   './',
   './index.html',
   './style.css',
+  './money.js',
   './cards.js',
   './app.js',
   './manifest.json',

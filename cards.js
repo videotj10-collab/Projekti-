@@ -36,17 +36,23 @@
     'K. Nieminen', 'J. Salo', 'E. Koskinen', 'P. Hakala'
   ];
 
-  /* Kauppiaat, joita simuloidut maksut käyttävät. */
+  /* Kauppiaat. mcc = toimialakoodi (kuten oikeassa korttitapahtumassa),
+   * adjust kertoo, miten varaus voi muuttua kirjautuessaan:
+   *   tip     = juomaraha voi nostaa summaa jälkikäteen
+   *   preauth = ennakkovaraus, joka korvautuu todellisella summalla
+   */
   var MERCHANTS = [
-    { name: 'Kahvila Aalto',    icon: '☕',  min: 3.2,  max: 8.9 },
-    { name: 'R-kioski',         icon: '🛒', min: 2,    max: 14 },
-    { name: 'Ravintola Nokka',  icon: '🍽️', min: 14,   max: 38 },
-    { name: 'HSL-lippu',        icon: '🚋', min: 2.95, max: 2.95 },
-    { name: 'K-Market',         icon: '🛍️', min: 6,    max: 42 },
-    { name: 'Parkkiautomaatti', icon: '🅿️', min: 2,    max: 9 },
-    { name: 'Apteekki',         icon: '💊', min: 4,    max: 22 },
-    { name: 'Kirjakauppa Sana', icon: '📚', min: 8,    max: 45 },
-    { name: 'Verkkokauppa',     icon: '📦', min: 12,   max: 120 }
+    { name: 'Kahvila Aalto',     icon: '☕',  min: 3.2,  max: 8.9,  mcc: '5814', category: 'Kahvilat',      city: 'Helsinki', adjust: { type: 'tip', maxPct: 10 } },
+    { name: 'R-kioski',          icon: '🛒', min: 2,    max: 14,   mcc: '5499', category: 'Päivittäistavara', city: 'Helsinki' },
+    { name: 'Ravintola Nokka',   icon: '🍽️', min: 14,   max: 38,   mcc: '5812', category: 'Ravintolat',    city: 'Helsinki', adjust: { type: 'tip', maxPct: 15 } },
+    { name: 'HSL-lippu',         icon: '🚋', min: 2.95, max: 2.95, mcc: '4111', category: 'Joukkoliikenne', city: 'Helsinki' },
+    { name: 'K-Market',          icon: '🛍️', min: 6,    max: 42,   mcc: '5411', category: 'Päivittäistavara', city: 'Espoo' },
+    { name: 'Parkkiautomaatti',  icon: '🅿️', min: 2,    max: 9,    mcc: '7523', category: 'Pysäköinti',    city: 'Helsinki' },
+    { name: 'Apteekki',          icon: '💊', min: 4,    max: 22,   mcc: '5912', category: 'Terveys',       city: 'Vantaa' },
+    { name: 'Kirjakauppa Sana',  icon: '📚', min: 8,    max: 45,   mcc: '5942', category: 'Kirjat',        city: 'Turku' },
+    { name: 'Verkkokauppa Nyt',  icon: '📦', min: 12,   max: 120,  mcc: '5999', category: 'Verkkokauppa',  city: 'Verkossa' },
+    { name: 'Huoltoasema Tähti', icon: '⛽', min: 30,   max: 95,   mcc: '5541', category: 'Polttoaine',    city: 'Tampere', adjust: { type: 'preauth', holdEuros: 75 } },
+    { name: 'Hotelli Ranta',     icon: '🏨', min: 89,   max: 240,  mcc: '7011', category: 'Majoitus',      city: 'Rovaniemi', adjust: { type: 'preauth', holdEuros: 150 } }
   ];
 
   function pick(list) { return list[Math.floor(Math.random() * list.length)]; }
@@ -77,14 +83,24 @@
     return (month < 10 ? '0' : '') + month + '/' + String(year).slice(2);
   }
 
-  function randomBalance(min, max) {
-    return Math.round((min + Math.random() * (max - min)) * 100) / 100;
+  /* Saldo sentteinä. */
+  function randomBalanceCents(minEuros, maxEuros) {
+    return Math.round((minEuros + Math.random() * (maxEuros - minEuros))) * 100;
   }
 
   var idCounter = 0;
-  function newId() {
+  function newId(prefix) {
     idCounter += 1;
-    return 'k' + Date.now().toString(36) + idCounter.toString(36);
+    return (prefix || 'k') + Date.now().toString(36) + idCounter.toString(36);
+  }
+
+  /* Oikeassa lompakossa laitteelle ei koskaan tallenneta korttinumeroa vaan
+   * maksutunnus (token), jonka voi mitätöidä korttia sulkematta. Demossa
+   * säilytetään vain tunnus ja neljä viimeistä numeroa. */
+  function newToken() {
+    var hex = '';
+    for (var i = 0; i < 8; i++) hex += Math.floor(Math.random() * 16).toString(16);
+    return 'tok_' + hex;
   }
 
   /* Luo uuden kortin. Puuttuvat tiedot arvotaan. */
@@ -99,10 +115,14 @@
       paletteId: opts.paletteId || bank.palette,
       holder: opts.holder || pick(HOLDERS),
       last4: randomLast4(),
+      token: newToken(),
       expiry: randomExpiry(),
-      balance: typeof opts.balance === 'number' ? opts.balance : randomBalance(40, 2400),
+      balanceCents: typeof opts.balanceCents === 'number'
+        ? opts.balanceCents
+        : randomBalanceCents(40, 2400),
       frozen: false,
-      limit: null
+      archived: false,
+      limitCents: null
     };
   }
 
@@ -110,18 +130,23 @@
   function defaultCards() {
     var holder = HOLDERS[0];
     return [
-      createCard({ bankId: 'nordea-debit',    type: 'Debit',    label: 'Käyttötili',   holder: holder, balance: 247.5 }),
-      createCard({ bankId: 'spankki-visa',    type: 'Credit',   label: 'Ostokset',     holder: holder, balance: 1180.4 }),
-      createCard({ bankId: 'nordea-business', type: 'Business', label: 'Yrityskortti', holder: holder, balance: 3620 })
+      createCard({ bankId: 'nordea-debit',    type: 'Debit',    label: 'Käyttötili',   holder: holder, balanceCents: 24750 }),
+      createCard({ bankId: 'spankki-visa',    type: 'Credit',   label: 'Ostokset',     holder: holder, balanceCents: 118040 }),
+      createCard({ bankId: 'nordea-business', type: 'Business', label: 'Yrityskortti', holder: holder, balanceCents: 362000 })
     ];
   }
 
+  /* Arpoo maksupyynnön: kauppias ja summa sentteinä. */
   function randomMerchant() {
     var m = pick(MERCHANTS);
     return {
       name: m.name,
       icon: m.icon,
-      amount: Math.round((m.min + Math.random() * (m.max - m.min)) * 100) / 100
+      mcc: m.mcc,
+      category: m.category,
+      city: m.city,
+      adjust: m.adjust || null,
+      amountCents: Math.round((m.min + Math.random() * (m.max - m.min)) * 100)
     };
   }
 
@@ -133,6 +158,8 @@
     getBank: getBank,
     getPalette: getPalette,
     createCard: createCard,
+    newId: newId,
+    newToken: newToken,
     defaultCards: defaultCards,
     randomMerchant: randomMerchant
   };

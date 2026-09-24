@@ -746,3 +746,40 @@ button.avatar { cursor: pointer; font-size: 17px; padding: 0; }
 }
 .chip.active { background: var(--text); color: #000; border-color: transparent; font-weight: 600; }
 .chip .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+/* ---------- katevaraukset ja tapahtumien tilat ---------- */
+.balance-note {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+
+/* Tapahtumarivi on painike, koska siitä avataan kuitti. */
+button.tx-row {
+  width: 100%;
+  border: none;
+  font-family: var(--font);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+button.tx-row:active { background: var(--surface-raised); }
+.tx-row.static { cursor: default; }
+.tx-info { display: flex; flex-direction: column; }
+.tx-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.tx-tag {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.tx-tag.pending { background: rgba(255,214,10,0.16); border-color: rgba(255,214,10,0.34); color: #ffd60a; }
+.tx-tag.declined { background: rgba(255,69,58,0.16); border-color: rgba(255,69,58,0.34); color: #ff938c; }
+.tx-tag.disputed { background: rgba(191,90,242,0.16); border-color: rgba(191,90,242,0.34); color: #d9a1ff; }
+
+.tx-amount.struck { text-decoration: line-through; color: var(--text-dim); }

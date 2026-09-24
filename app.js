@@ -4,7 +4,9 @@
   'use strict';
 
   var Cards = window.WalletCards;
-  var STORAGE_KEY = 'lompakko_state_v2';
+  var STORAGE_KEY = 'lompakko_state_v3';
+  var LEGACY_KEY = 'lompakko_state_v2';
+  var SETTLE_DELAY_MS = 20000; // varaus kirjautuu demossa 20 s kuluttua
 
   /* ================= TILA ================= */
 
@@ -13,6 +15,7 @@
   function defaultState() {
     var cards = Cards.defaultCards();
     return {
+      version: 3,
       user: { name: 'Mika Grönqvist', avatar: '🦊' },
       settings: { hideBalance: false, currency: 'suffix' },
       cards: cards,
@@ -25,10 +28,11 @@
   function loadState() {
     var base = defaultState();
     try {
-      var raw = localStorage.getItem(STORAGE_KEY);
+      var raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY);
       if (!raw) return base;
       var saved = JSON.parse(raw);
       if (!saved || !Array.isArray(saved.cards) || saved.cards.length === 0) return base;
+      saved = migrate(saved);
       saved.user = saved.user || base.user;
       saved.settings = Object.assign({}, base.settings, saved.settings || {});
       saved.tx = Array.isArray(saved.tx) ? saved.tx : [];
@@ -38,6 +42,37 @@
     } catch (e) {
       return base;
     }
+  }
+
+  /* Vanha tila käytti euroja liukulukuina. Muunnetaan sentteihin ja
+   * täydennetään uudet kentät. */
+  function migrate(saved) {
+    if (saved.version >= 3) return saved;
+
+    saved.cards.forEach(function (card) {
+      if (typeof card.balanceCents !== 'number') {
+        card.balanceCents = Money.fromEuros(card.balance || 0);
+      }
+      if (typeof card.limitCents !== 'number') {
+        card.limitCents = card.limit ? Money.fromEuros(card.limit) : null;
+      }
+      if (!card.token) card.token = Cards.newToken();
+      if (typeof card.archived !== 'boolean') card.archived = false;
+      delete card.balance;
+      delete card.limit;
+    });
+
+    (saved.tx || []).forEach(function (t) {
+      if (typeof t.amountCents !== 'number') t.amountCents = Money.fromEuros(t.amount || 0);
+      if (typeof t.originalAmountCents !== 'number') t.originalAmountCents = t.amountCents;
+      if (!t.status) t.status = 'settled';
+      if (!t.reference) t.reference = reference(t.ts);
+      if (!t.merchant) t.merchant = { name: t.name, icon: t.icon, category: 'Muu', city: '' };
+      delete t.amount;
+    });
+
+    saved.version = 3;
+    return saved;
   }
 
   function saveState() {
@@ -52,6 +87,33 @@
   }
 
   function cardById(id) { return findCard(state.cards, id); }
+
+  /* ================= KIRJANPITO ================= */
+
+  /* Kortilla olevat vahvistamattomat katevaraukset. */
+  function pendingTx(cardId) {
+    return state.tx.filter(function (t) {
+      return t.cardId === cardId && t.status === 'pending';
+    });
+  }
+
+  function pendingCents(cardId) {
+    return Money.sum(pendingTx(cardId), function (t) { return t.amountCents; });
+  }
+
+  /* Käytettävissä = kirjattu saldo - avoimet varaukset. Tämä on se luku,
+   * jonka pankki kertoo käyttäjälle, ei pelkkä tilin saldo. */
+  function availableCents(card) {
+    return card.balanceCents - pendingCents(card.id);
+  }
+
+  function reference(ts) {
+    return 'RF' + String(ts || Date.now()).slice(-10);
+  }
+
+  function authCode() {
+    return String(Math.floor(100000 + Math.random() * 900000));
+  }
   function activeCard() { return cardById(state.activeCardId) || state.cards[0]; }
 
   /* ================= APUFUNKTIOT ================= */
@@ -62,34 +124,27 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  function amount(n) {
-    return Number(n).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-
-  /* Valuutan näyttömuoto on käyttäjän valittavissa asetuksista. */
-  function fmtMoney(n) {
-    var value = amount(n);
-    switch (state.settings.currency) {
-      case 'prefix': return '€ ' + value;
-      case 'code': return value + ' EUR';
-      default: return value + ' €';
-    }
+  /* Kaikki summat kulkevat sentteinä ja muotoillaan vasta näytettäessä. */
+  function fmtMoney(cents) {
+    return Money.format(cents, state.settings.currency);
   }
 
   /* Saldot piilotetaan yksityisyystilassa. */
-  function fmtBalance(n) {
-    return state.settings.hideBalance ? '••••••' : fmtMoney(n);
+  function fmtBalance(cents) {
+    return state.settings.hideBalance ? '••••••' : fmtMoney(cents);
   }
 
-  /* Kortin tämän kuukauden kulutus kulukaton seurantaa varten. */
-  function spentThisMonth(cardId) {
+  /* Kortin tämän kuukauden kulutus kulukaton seurantaa varten.
+   * Hylätyt tapahtumat eivät kuluta kattoa. */
+  function spentThisMonthCents(cardId) {
     var now = new Date();
-    return state.tx.reduce(function (sum, t) {
-      if (t.cardId !== cardId) return sum;
+    return Money.sum(state.tx, function (t) {
+      if (t.cardId !== cardId) return 0;
+      if (t.status === 'declined') return 0;
       var d = new Date(t.ts);
-      if (d.getFullYear() !== now.getFullYear() || d.getMonth() !== now.getMonth()) return sum;
-      return sum + t.amount;
-    }, 0);
+      if (d.getFullYear() !== now.getFullYear() || d.getMonth() !== now.getMonth()) return 0;
+      return t.amountCents;
+    });
   }
 
   function fmtTime(ts) {
@@ -232,7 +287,19 @@
     var card = activeCard();
     var label = card.frozen ? 'Jäädytetty · ' : 'Käytettävissä · ';
     document.querySelector('.balance-label').textContent = label + cardTitle(card);
-    document.getElementById('balanceText').textContent = fmtBalance(card.balance);
+    document.getElementById('balanceText').textContent = fmtBalance(availableCents(card));
+
+    /* Avoimet katevaraukset kerrotaan erikseen: kirjattu saldo on eri luku
+     * kuin käytettävissä oleva. */
+    var holds = pendingTx(card.id);
+    var note = document.getElementById('balanceNote');
+    if (holds.length === 0) {
+      note.hidden = true;
+    } else {
+      note.hidden = false;
+      note.textContent = holds.length + (holds.length === 1 ? ' varaus · ' : ' varausta · ') +
+        'kirjattu saldo ' + fmtBalance(card.balanceCents);
+    }
 
     var payBtn = document.getElementById('payBtn');
     payBtn.textContent = card.frozen ? 'Kortti on jäädytetty' : 'Napauta maksaaksesi';
@@ -248,17 +315,29 @@
 
   /* ================= TAPAHTUMAT ================= */
 
+  var TX_STATUS = {
+    pending:  { label: 'Vahvistamatta', cls: 'pending' },
+    settled:  { label: '', cls: '' },
+    declined: { label: 'Hylätty', cls: 'declined' },
+    disputed: { label: 'Riitautettu', cls: 'disputed' }
+  };
+
   function txRowHTML(t) {
     var card = cardById(t.cardId);
     var cardName = card ? cardTitle(card) : 'Poistettu kortti';
-    return '<div class="tx-row">' +
-      '<div class="tx-icon">' + t.icon + '</div>' +
-      '<div class="tx-info">' +
-        '<div class="tx-name">' + esc(t.name) + '</div>' +
-        '<div class="tx-meta">' + fmtTime(t.ts) + ' · ' + esc(cardName) + ' · ' + esc(t.method) + '</div>' +
-      '</div>' +
-      '<div class="tx-amount">-' + fmtMoney(t.amount) + '</div>' +
-    '</div>';
+    var status = TX_STATUS[t.status] || TX_STATUS.settled;
+    var tag = status.label
+      ? ' <span class="tx-tag ' + status.cls + '">' + status.label + '</span>'
+      : '';
+    return '<button class="tx-row" data-tx="' + t.id + '">' +
+      '<span class="tx-icon">' + t.merchant.icon + '</span>' +
+      '<span class="tx-info">' +
+        '<span class="tx-name">' + esc(t.merchant.name) + tag + '</span>' +
+        '<span class="tx-meta">' + fmtTime(t.ts) + ' · ' + esc(cardName) + ' · ' + esc(t.method) + '</span>' +
+      '</span>' +
+      '<span class="tx-amount' + (t.status === 'declined' ? ' struck' : '') + '">-' +
+        fmtMoney(t.amountCents) + '</span>' +
+    '</button>';
   }
 
   function renderRecent() {
@@ -316,7 +395,9 @@
       return;
     }
 
-    var total = rows.reduce(function (sum, t) { return sum + t.amount; }, 0);
+    var total = Money.sum(rows, function (t) {
+      return t.status === 'declined' ? 0 : t.amountCents;
+    });
     sub.textContent = rows.length + (rows.length === 1 ? ' tapahtuma' : ' tapahtumaa') +
       ' · yhteensä ' + fmtMoney(total);
 
@@ -336,19 +417,82 @@
     }).join('');
   }
 
-  function addTransaction(card, payment, method) {
-    card.balance = Math.max(0, Math.round((card.balance - payment.amount) * 100) / 100);
-    state.tx.unshift({
-      id: 't' + Date.now().toString(36),
+  /* Maksusta syntyy ensin katevaraus. Se kirjautuu tilille vasta myöhemmin,
+   * ja summa voi vielä muuttua (juomaraha, ennakkovaraus). */
+  function addTransaction(card, payment, method, extra) {
+    var now = Date.now();
+    var tx = Object.assign({
+      id: Cards.newId('t'),
       cardId: card.id,
-      name: payment.name,
-      icon: payment.icon,
-      amount: payment.amount,
-      ts: Date.now(),
-      method: method
-    });
+      merchant: {
+        name: payment.name, icon: payment.icon, mcc: payment.mcc,
+        category: payment.category, city: payment.city
+      },
+      adjust: payment.adjust || null,
+      amountCents: payment.amountCents,
+      originalAmountCents: payment.amountCents,
+      ts: now,
+      method: method,
+      status: 'pending',
+      reference: reference(now),
+      authCode: authCode(),
+      settledTs: null
+    }, extra || {});
+
+    state.tx.unshift(tx);
+    if (tx.status === 'pending') scheduleSettlement(tx);
     saveState();
     renderAll();
+    return tx;
+  }
+
+  /* ================= VARAUSTEN KIRJAUTUMINEN ================= */
+
+  var settleTimers = {};
+
+  function scheduleSettlement(tx) {
+    if (settleTimers[tx.id]) return;
+    var wait = Math.max(0, tx.ts + SETTLE_DELAY_MS - Date.now());
+    settleTimers[tx.id] = setTimeout(function () {
+      delete settleTimers[tx.id];
+      settleTx(tx.id);
+    }, wait);
+  }
+
+  /* Kirjaa varauksen tilille. Ravintolassa summa voi nousta juomarahalla ja
+   * ennakkovaraus korvautuu todellisella summalla. */
+  function settleTx(txId) {
+    var tx = null;
+    for (var i = 0; i < state.tx.length; i++) {
+      if (state.tx[i].id === txId) { tx = state.tx[i]; break; }
+    }
+    if (!tx || tx.status !== 'pending') return;
+
+    var card = cardById(tx.cardId);
+    if (!card) return;
+
+    if (tx.adjust && tx.adjust.type === 'tip') {
+      var pct = Math.random() * (tx.adjust.maxPct / 100);
+      tx.amountCents = Math.round(tx.originalAmountCents * (1 + pct));
+    } else if (tx.adjust && tx.adjust.type === 'preauth') {
+      tx.amountCents = Math.round(tx.originalAmountCents * (0.45 + Math.random() * 0.5));
+    }
+
+    tx.status = 'settled';
+    tx.settledTs = Date.now();
+    card.balanceCents = Math.max(0, card.balanceCents - tx.amountCents);
+    saveState();
+    renderAll();
+
+    if (tx.amountCents !== tx.originalAmountCents) {
+      toast(tx.merchant.name + ': lopullinen summa ' + fmtMoney(tx.amountCents));
+    }
+  }
+
+  function restoreSettlements() {
+    state.tx.forEach(function (tx) {
+      if (tx.status === 'pending') scheduleSettlement(tx);
+    });
   }
 
   /* ================= KORTTIEN HALLINTA ================= */
@@ -363,7 +507,7 @@
       var badges = '';
       if (card.id === state.defaultCardId) badges += ' <span class="badge default">Oletus</span>';
       if (card.frozen) badges += ' <span class="badge frozen">Jäädytetty</span>';
-      if (card.limit) badges += ' <span class="badge">Kulukatto ' + amount(card.limit) + ' €</span>';
+      if (card.limitCents) badges += ' <span class="badge">Kulukatto ' + Money.plain(card.limitCents) + ' €</span>';
       return '<button class="card-row" data-card="' + card.id + '">' +
         '<span class="card-swatch" style="background:' + gradient(card) + '"></span>' +
         '<span class="card-row-info">' +
@@ -371,7 +515,7 @@
           '<span class="card-row-meta">' + esc(bank.name) + ' · ' + esc(card.type) +
             ' · •••• ' + esc(card.last4) + '</span>' +
         '</span>' +
-        '<span class="card-row-amount">' + fmtBalance(card.balance) + '</span>' +
+        '<span class="card-row-amount">' + fmtBalance(availableCents(card)) + '</span>' +
       '</button>';
     }).join('');
   }
@@ -386,7 +530,7 @@
     var card = cardById(cardId);
     if (!card) return;
     var isDefault = card.id === state.defaultCardId;
-    var used = spentThisMonth(card.id);
+    var used = spentThisMonthCents(card.id);
 
     var html =
       cardFaceHTML(card, 'preview-card', 'position:relative;top:0;transform:none;margin-bottom:18px;') +
@@ -397,9 +541,9 @@
       '<div class="field">' +
         '<label for="cLimit">Kulukatto kuukaudessa (€)</label>' +
         '<input type="number" id="cLimit" min="0" step="10" placeholder="Ei rajaa" value="' +
-          (card.limit ? card.limit : '') + '">' +
-        '<div class="field-hint">Käytetty tässä kuussa: ' + amount(used) + ' €' +
-          (card.limit ? ' / ' + amount(card.limit) + ' €' : '') + '</div>' +
+          (card.limitCents ? Money.toEuros(card.limitCents) : '') + '">' +
+        '<div class="field-hint">Käytetty tässä kuussa: ' + Money.plain(used) + ' €' +
+          (card.limitCents ? ' / ' + Money.plain(card.limitCents) + ' €' : '') + '</div>' +
       '</div>' +
       '<div class="settings-group" style="margin-bottom:16px">' +
         '<div class="settings-row">' +
@@ -427,9 +571,9 @@
       });
 
       body.querySelector('#cSave').addEventListener('click', function () {
-        var limitValue = parseFloat(body.querySelector('#cLimit').value);
+        var limitCents = Money.parse(body.querySelector('#cLimit').value);
         card.label = body.querySelector('#cName').value.trim();
-        card.limit = isNaN(limitValue) || limitValue <= 0 ? null : limitValue;
+        card.limitCents = !limitCents || limitCents <= 0 ? null : limitCents;
         card.frozen = frozen;
         saveState();
         renderAll();
@@ -596,15 +740,15 @@
 
   /* Tarkistaa, voiko kortilla maksaa annetun summan.
    * Palauttaa virheilmoituksen tai null, jos maksu on sallittu. */
-  function paymentBlocker(card, sum) {
+  function paymentBlocker(card, sumCents) {
     if (card.frozen) {
       return 'Kortti ' + cardTitle(card) + ' on jäädytetty. Vapauta se kortin asetuksista.';
     }
-    if (card.limit && spentThisMonth(card.id) + sum > card.limit) {
-      return 'Kulukatto ' + amount(card.limit) + ' € ylittyisi tällä maksulla.';
+    if (card.limitCents && spentThisMonthCents(card.id) + sumCents > card.limitCents) {
+      return 'Kulukatto ' + Money.plain(card.limitCents) + ' € ylittyisi tällä maksulla.';
     }
-    if (sum > card.balance) {
-      return 'Kortilla ei ole riittävästi katetta.';
+    if (sumCents > availableCents(card)) {
+      return 'Kortilla ei ole riittävästi katetta. Avoimet varaukset pienentävät käytettävissä olevaa summaa.';
     }
     return null;
   }
@@ -618,7 +762,7 @@
 
     var rows = ordered.map(function (card) {
       var bank = Cards.getBank(card.bankId);
-      var blocked = paymentBlocker(card, payment.amount);
+      var blocked = paymentBlocker(card, payment.amountCents);
       var note = blocked
         ? '<span class="badge frozen">' + (card.frozen ? 'Jäädytetty' : 'Estetty') + '</span>'
         : (card.id === state.defaultCardId ? '<span class="badge default">Oletus</span>' : '');
@@ -628,18 +772,18 @@
           '<span class="card-row-title">' + esc(cardTitle(card)) + ' ' + note + '</span>' +
           '<span class="card-row-meta">' + esc(bank.name) + ' · •••• ' + esc(card.last4) + '</span>' +
         '</span>' +
-        '<span class="card-row-amount">' + fmtBalance(card.balance) + '</span>' +
+        '<span class="card-row-amount">' + fmtBalance(availableCents(card)) + '</span>' +
       '</button>';
     }).join('');
 
     var html =
-      '<div class="tx-row" style="border-radius:14px;margin-bottom:16px">' +
+      '<div class="tx-row static" style="border-radius:14px;margin-bottom:16px">' +
         '<div class="tx-icon">' + payment.icon + '</div>' +
         '<div class="tx-info">' +
           '<div class="tx-name">' + esc(payment.name) + '</div>' +
-          '<div class="tx-meta">Maksupyyntö</div>' +
+          '<div class="tx-meta">Maksupyyntö · ' + esc(payment.category) + '</div>' +
         '</div>' +
-        '<div class="tx-amount">' + fmtMoney(payment.amount) + '</div>' +
+        '<div class="tx-amount">' + fmtMoney(payment.amountCents) + '</div>' +
       '</div>' +
       '<div class="section-label" style="margin-top:0">Valitse maksutapa</div>' +
       rows;
@@ -663,11 +807,11 @@
     clearTimers();
     overlay.classList.remove('success', 'error');
     overlay.classList.add('show');
-    tapAmount.textContent = fmtMoney(payment.amount);
+    tapAmount.textContent = fmtMoney(payment.amountCents);
     tapNote.hidden = true;
     tapNote.textContent = '';
 
-    var blocked = paymentBlocker(card, payment.amount);
+    var blocked = paymentBlocker(card, payment.amountCents);
     if (blocked) {
       overlay.classList.add('error');
       nfcIcon.textContent = '✕';
@@ -807,6 +951,7 @@
   }
 
   renderAll();
+  restoreSettlements();
 
   /* ================= PWA ================= */
 
