@@ -11,7 +11,7 @@
 
   <div class="topbar" id="topbar">
     <h1 id="pageTitle">Lompakko</h1>
-    <div class="avatar" id="avatar">MG</div>
+    <button class="avatar" id="avatar" aria-label="Avaa asetukset">🦊</button>
   </div>
 
   <div class="screens">
@@ -87,6 +87,55 @@
       </div>
     </div>
 
+    <!-- ASETUKSET -->
+    <div class="screen" id="screen-settings">
+      <div class="history-header">
+        <h2>Asetukset</h2>
+        <div class="history-sub">Lompakon ja korttien asetukset</div>
+      </div>
+
+      <div class="section-label">Käyttäjä</div>
+      <div class="settings-group">
+        <div class="settings-row">
+          <span class="settings-label">Nimi</span>
+          <input type="text" id="setName" class="inline-input" maxlength="28">
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">Avatar</span>
+          <div class="avatar-row" id="setAvatar"></div>
+        </div>
+      </div>
+
+      <div class="section-label">Lompakko</div>
+      <div class="settings-group">
+        <div class="settings-row">
+          <span class="settings-label">Oletuskortti</span>
+          <select id="setDefaultCard" class="inline-select"></select>
+        </div>
+        <div class="settings-row">
+          <span class="settings-label">Yksityisyystila
+            <span class="settings-sub">Piilota saldot näkymistä</span>
+          </span>
+          <button class="toggle" id="setHideBalance" role="switch" aria-label="Yksityisyystila"></button>
+        </div>
+        <div class="settings-row column">
+          <span class="settings-label">Valuutan näyttömuoto</span>
+          <div class="segmented" id="setCurrency">
+            <button data-currency="suffix">12,50 €</button>
+            <button data-currency="prefix">€ 12,50</button>
+            <button data-currency="code">12,50 EUR</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-label">Demo</div>
+      <button class="danger-btn" id="resetBtn">Palauta demon oletustiedot</button>
+
+      <p class="disclaimer">Lompakko on harjoitusdemo. Kortit, saldot ja tapahtumat
+      ovat keksittyjä, eikä sovellus ole yhteydessä mihinkään pankkiin tai
+      maksujärjestelmään.</p>
+    </div>
+
   </div>
 
   <div class="navbar">
@@ -106,6 +155,10 @@
       <span class="icon">▣</span>
       <span class="label">Skannaa</span>
     </button>
+    <button class="navbtn" data-screen="settings">
+      <span class="icon">⚙</span>
+      <span class="label">Asetukset</span>
+    </button>
   </div>
 
   <!-- NFC-MAKSUN PEITTOKUVA -->
@@ -118,6 +171,7 @@
     </div>
     <div class="tap-status" id="tapStatus">Napauta laitetta maksupäätteeseen</div>
     <div class="tap-amount" id="tapAmount"></div>
+    <div class="tap-error-note" id="tapNote" hidden></div>
     <button class="tap-cancel" id="tapCancel">Peruuta</button>
   </div>
 
