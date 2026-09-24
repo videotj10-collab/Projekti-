@@ -536,6 +536,184 @@
     });
   }
 
+  /* ================= KUITTI ================= */
+
+  function txById(id) {
+    for (var i = 0; i < state.tx.length; i++) {
+      if (state.tx[i].id === id) return state.tx[i];
+    }
+    return null;
+  }
+
+  function fmtDateTime(ts) {
+    var d = new Date(ts);
+    return d.toLocaleDateString('fi-FI', { day: 'numeric', month: 'numeric', year: 'numeric' }) +
+      ' klo ' + d.toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function receiptRow(label, value) {
+    return '<div class="receipt-row"><span>' + esc(label) + '</span><span>' + esc(value) + '</span></div>';
+  }
+
+  function openReceipt(txId) {
+    var tx = txById(txId);
+    if (!tx) return;
+    var card = cardById(tx.cardId);
+    var status = TX_STATUS[tx.status] || TX_STATUS.settled;
+
+    var statusText = {
+      pending: 'Katevaraus — kirjautuu tilille myöhemmin',
+      settled: 'Kirjattu tilille',
+      declined: 'Hylätty — summaa ei veloitettu',
+      disputed: 'Riitautettu — pankki selvittää'
+    }[tx.status];
+
+    var head =
+      '<div class="receipt-head">' +
+        '<div class="receipt-icon">' + tx.merchant.icon + '</div>' +
+        '<div class="receipt-merchant">' + esc(tx.merchant.name) + '</div>' +
+        '<div class="receipt-amount' + (tx.status === 'declined' ? ' struck' : '') + '">' +
+          fmtMoney(tx.amountCents) + '</div>' +
+        (status.label ? '<span class="tx-tag ' + status.cls + '">' + status.label + '</span>' : '') +
+        '<div class="receipt-status">' + esc(statusText) + '</div>' +
+      '</div>';
+
+    var rows = '<div class="receipt-list">';
+    rows += receiptRow('Kortti', card ? cardTitle(card) + ' · •••• ' + card.last4 : 'Poistettu kortti');
+    rows += receiptRow('Maksutapa', tx.method);
+    rows += receiptRow('Aika', fmtDateTime(tx.ts));
+    if (tx.merchant.city) rows += receiptRow('Paikka', tx.merchant.city);
+    if (tx.merchant.category) rows += receiptRow('Kategoria', tx.merchant.category);
+    if (tx.merchant.mcc) rows += receiptRow('Toimialakoodi', tx.merchant.mcc);
+    rows += receiptRow('Viite', tx.reference);
+    if (tx.authCode && tx.status !== 'declined') rows += receiptRow('Valtuutusnumero', tx.authCode);
+    if (tx.declineCode) rows += receiptRow('Vastauskoodi', tx.declineCode);
+    if (tx.status === 'settled' && tx.settledTs) rows += receiptRow('Kirjattu', fmtDateTime(tx.settledTs));
+    if (tx.amountCents !== tx.originalAmountCents) {
+      rows += receiptRow('Alkuperäinen varaus', Money.plain(tx.originalAmountCents) + ' €');
+    }
+    if (tx.disputeRef) rows += receiptRow('Riitautuksen viite', tx.disputeRef);
+    rows += '</div>';
+
+    var notes = '';
+    if (tx.status === 'pending') {
+      notes += '<p class="field-hint">Varaus pienentää käytettävissä olevaa summaa heti, ' +
+        'mutta kirjautuu tilille vasta kun kauppias veloittaa sen. Lopullinen summa voi ' +
+        'vielä muuttua.</p>';
+    }
+    if (tx.status === 'declined' && tx.declineNote) {
+      notes += '<p class="field-hint">' + esc(tx.declineNote) + '</p>';
+    }
+    if (tx.status === 'disputed') {
+      notes += '<p class="field-hint">Riitautus on vastaanotettu. Pankki on yhteydessä ' +
+        '1–5 arkipäivän kuluessa. Summa voidaan hyvittää selvityksen ajaksi.</p>';
+    }
+
+    var actions = '<div class="receipt-actions">';
+    if (tx.status === 'pending') {
+      actions += '<button class="ghost-btn" id="rcSettle">Kirjaa varaus nyt (demo)</button>';
+    }
+    if (tx.status !== 'declined' && tx.status !== 'disputed') {
+      actions += '<button class="ghost-btn" id="rcDispute">En tunnista tätä maksua</button>';
+    }
+    if (card && !card.frozen) {
+      actions += '<button class="danger-btn" id="rcFreeze">Jäädytä kortti heti</button>';
+    }
+    actions += '<button class="ghost-btn" id="rcSupport">Ota yhteyttä tukeen</button>';
+    actions += '</div>';
+
+    openSheet('Kuitti', head + rows + notes + actions, function (body) {
+      var settleBtn = body.querySelector('#rcSettle');
+      if (settleBtn) {
+        settleBtn.addEventListener('click', function () {
+          settleTx(tx.id);
+          closeSheet();
+          toast('Varaus kirjattiin tilille', 'ok');
+        });
+      }
+
+      var disputeBtn = body.querySelector('#rcDispute');
+      if (disputeBtn) {
+        disputeBtn.addEventListener('click', function () {
+          withAuth('Riitauta maksu', 'Vahvista henkilöllisyytesi tehdäksesi riitautuksen', function () {
+            disputeTx(tx.id);
+          });
+        });
+      }
+
+      var freezeBtn = body.querySelector('#rcFreeze');
+      if (freezeBtn) {
+        freezeBtn.addEventListener('click', function () {
+          card.frozen = true;
+          saveState();
+          renderAll();
+          closeSheet();
+          toast(cardTitle(card) + ' jäädytettiin. Maksut on estetty.', 'ok');
+        });
+      }
+
+      body.querySelector('#rcSupport').addEventListener('click', function () {
+        openSupport(tx);
+      });
+    });
+  }
+
+  /* Riitautus: maksu merkitään selvitykseen ja varaus vapautetaan. */
+  function disputeTx(txId) {
+    var tx = txById(txId);
+    if (!tx) return;
+    var card = cardById(tx.cardId);
+
+    if (tx.status === 'pending') {
+      if (settleTimers[tx.id]) {
+        clearTimeout(settleTimers[tx.id]);
+        delete settleTimers[tx.id];
+      }
+    } else if (tx.status === 'settled' && card) {
+      /* Hyvitys selvityksen ajaksi. */
+      card.balanceCents += tx.amountCents;
+    }
+
+    tx.status = 'disputed';
+    tx.disputedTs = Date.now();
+    tx.disputeRef = 'RIITA-' + String(Date.now()).slice(-6);
+    saveState();
+    renderAll();
+    closeSheet();
+    toast('Riitautus vastaanotettu · ' + tx.disputeRef, 'ok');
+  }
+
+  function openSupport(tx) {
+    var ref = tx ? tx.reference : '—';
+    var html =
+      '<p class="field-hint">Demossa tuki ei ole oikeasti käytettävissä. Oikeassa ' +
+      'sovelluksessa nämä avaisivat suoran yhteyden pankkiin, ja tapahtuman tiedot ' +
+      'kulkisivat mukana.</p>' +
+      '<div class="settings-group" style="margin-bottom:16px">' +
+        '<div class="settings-row"><span class="settings-label">Chat' +
+          '<span class="settings-sub">Vastausaika noin 2 min</span></span>' +
+          '<span class="badge">Avaa</span></div>' +
+        '<div class="settings-row"><span class="settings-label">Soita kortin sulkupalveluun' +
+          '<span class="settings-sub">Auki ympäri vuorokauden</span></span>' +
+          '<span class="badge">Soita</span></div>' +
+        '<div class="settings-row"><span class="settings-label">Viite tukea varten' +
+          '<span class="settings-sub">' + esc(ref) + '</span></span></div>' +
+      '</div>' +
+      '<button class="solid-btn" id="supportClose">Sulje</button>';
+
+    openSheet('Tuki', html, function (body) {
+      body.querySelector('#supportClose').addEventListener('click', closeSheet);
+    });
+  }
+
+  /* Kuitti avautuu sekä lompakon viimeisimmistä että historiasta. */
+  ['recentTx', 'historyList'].forEach(function (containerId) {
+    document.getElementById(containerId).addEventListener('click', function (e) {
+      var row = e.target.closest('.tx-row');
+      if (row && row.dataset.tx) openReceipt(row.dataset.tx);
+    });
+  });
+
   /* ================= KORTTIEN HALLINTA ================= */
 
   function renderCardList() {
