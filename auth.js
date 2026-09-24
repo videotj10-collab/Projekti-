@@ -210,13 +210,21 @@
       el.pinBtn.hidden = false;
       el.pinArea.hidden = true;
       el.cancelBtn.hidden = !pending.cancellable;
+      el.cancelBtn.textContent = options.cancelLabel || 'Peruuta';
       showError('');
       entered = '';
 
       el.overlay.hidden = false;
       requestAnimationFrame(function () {
         el.overlay.classList.add('show');
-        el.bioBtn.focus();
+        /* Maksupäätteen PIN-kysely menee suoraan näppäimistöön:
+         * biometriikka ei korvaa päätteen pyytämää koodia. */
+        if (options.pinOnly) {
+          showKeypad();
+          el.pinBtn.hidden = true;
+        } else {
+          el.bioBtn.focus();
+        }
       });
     });
   }

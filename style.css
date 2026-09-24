@@ -348,10 +348,7 @@ body {
 .tap-overlay.success .nfc-center span { color: #000; }
 .tap-status { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
 .tap-amount { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 30px; font-variant-numeric: tabular-nums; }
-.tap-cancel {
-  background: none; border: none; color: var(--text-dim);
-  font-size: 15px; padding: 10px 20px; cursor: pointer;
-}
+
 
 .disclaimer {
   text-align: center;
@@ -712,13 +709,35 @@ button.avatar { cursor: pointer; font-size: 17px; padding: 0; }
 /* ---------- virhetila maksussa ---------- */
 .tap-overlay.error .nfc-center { background: var(--danger); }
 .tap-overlay.error .nfc-center span { color: #fff; }
-.tap-error-note {
+.tap-note {
   font-size: 13.5px;
   color: var(--text-dim);
-  margin: 0 0 26px;
+  margin: 0 0 8px;
   text-align: center;
   padding: 0 32px;
+  min-height: 19px;
 }
+.tap-code {
+  font-size: 12px;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+.tap-actions {
+  margin-top: 18px;
+  width: 100%;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 20px;
+}
+.tap-overlay[hidden] { display: none; }
+.tap-overlay.waiting .nfc-center { background: var(--text); }
+.tap-overlay.error .nfc-center span,
+.tap-overlay.success .nfc-center span { color: #fff; }
+.tap-overlay.success .nfc-center span { color: #000; }
+.tap-amount { margin-bottom: 14px !important; }
 
 /* ---------- historian suodatus ---------- */
 .chip-row {

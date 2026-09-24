@@ -26,6 +26,7 @@
       /* Demossa PIN on tilassa selkotekstinä. Oikeassa sovelluksessa
        * tunnistautuminen tehtäisiin laitteen suojatussa elementissä. */
       security: { pin: '1234' },
+      contactless: { spentCents: 0 },
       cards: cards,
       defaultCardId: cards[0].id,
       activeCardId: cards[0].id,
@@ -44,6 +45,7 @@
       saved.user = saved.user || base.user;
       saved.settings = Object.assign({}, base.settings, saved.settings || {});
       saved.security = Object.assign({}, base.security, saved.security || {});
+      saved.contactless = Object.assign({}, base.contactless, saved.contactless || {});
       saved.tx = Array.isArray(saved.tx) ? saved.tx : [];
       if (!findCard(saved.cards, saved.defaultCardId)) saved.defaultCardId = saved.cards[0].id;
       if (!findCard(saved.cards, saved.activeCardId)) saved.activeCardId = saved.defaultCardId;
@@ -791,19 +793,9 @@
 
   /* ================= MAKSU (NFC) ================= */
 
-  var overlay = document.getElementById('tapOverlay');
-  var tapStatus = document.getElementById('tapStatus');
-  var tapAmount = document.getElementById('tapAmount');
-  var tapNote = document.getElementById('tapNote');
-  var nfcIcon = document.getElementById('nfcIcon');
-  var timers = [];
+  /* ================= MAKSU ================= */
 
-  function clearTimers() {
-    timers.forEach(clearTimeout);
-    timers = [];
-  }
-
-  /* Tarkistaa, voiko kortilla maksaa annetun summan.
+  /* Lompakon omat estot ennen kuin maksua edes yritetään päätteellä.
    * Palauttaa virheilmoituksen tai null, jos maksu on sallittu. */
   function paymentBlocker(card, sumCents) {
     if (card.frozen) {
@@ -818,10 +810,60 @@
     return null;
   }
 
+  /* Lähimaksujen kertymä: PIN-koodi nollaa sen, kuten oikeallakin kortilla. */
+  function contactlessSpent() {
+    return state.contactless ? state.contactless.spentCents : 0;
+  }
+
+  Payment.init({
+    fmtMoney: fmtMoney,
+    cardTitle: cardTitle,
+    blocker: paymentBlocker,
+
+    requireAuthForPayment: function () {
+      return state.settings.requireAuthForPayment;
+    },
+
+    authenticate: function (merchantName, amountText) {
+      return Auth.require('Vahvista maksu', merchantName + ' · ' + amountText);
+    },
+
+    requestPin: function (reason) {
+      return Auth.open({
+        title: 'Syötä PIN-koodi',
+        sub: reason,
+        icon: '🔢',
+        pinOnly: true,
+        cancellable: true,
+        cancelLabel: 'Keskeytä maksu'
+      });
+    },
+
+    contactlessSpent: contactlessSpent,
+
+    onApproved: function (card, payment, meta) {
+      addTransaction(card, payment, meta.method, { pinUsed: meta.pinUsed });
+      state.contactless = {
+        spentCents: meta.pinUsed ? 0 : contactlessSpent() + payment.amountCents
+      };
+      saveState();
+      renderAll();
+    },
+
+    /* Hylätty maksu jää historiaan: käyttäjän pitää nähdä, mitä tapahtui. */
+    onDeclined: function (card, payment, info) {
+      addTransaction(card, payment, info.local ? 'Estetty lompakossa' : 'Lähimaksu', {
+        status: 'declined',
+        declineCode: info.code || null,
+        declineNote: info.note
+      });
+    }
+  });
+
   /* --- maksutavan valinta maksuhetkellä --- */
   function openPaymentPicker() {
     var payment = Cards.randomMerchant();
-    var ordered = state.cards.slice().sort(function (a, b) {
+    var ordered = state.cards.filter(function (c) { return !c.archived; }).sort(function (a, b) {
       return (b.id === state.defaultCardId) - (a.id === state.defaultCardId);
     });
 
@@ -841,15 +883,20 @@
       '</button>';
     }).join('');
 
+    var pinNote = payment.amountCents > Payment.CONTACTLESS_LIMIT_CENTS
+      ? '<p class="field-hint">Summa ylittää lähimaksurajan, joten maksupääte pyytää PIN-koodin.</p>'
+      : '';
+
     var html =
       '<div class="tx-row static" style="border-radius:14px;margin-bottom:16px">' +
-        '<div class="tx-icon">' + payment.icon + '</div>' +
-        '<div class="tx-info">' +
-          '<div class="tx-name">' + esc(payment.name) + '</div>' +
-          '<div class="tx-meta">Maksupyyntö · ' + esc(payment.category) + '</div>' +
-        '</div>' +
-        '<div class="tx-amount">' + fmtMoney(payment.amountCents) + '</div>' +
+        '<span class="tx-icon">' + payment.icon + '</span>' +
+        '<span class="tx-info">' +
+          '<span class="tx-name">' + esc(payment.name) + '</span>' +
+          '<span class="tx-meta">Maksupyyntö · ' + esc(payment.category) + '</span>' +
+        '</span>' +
+        '<span class="tx-amount">' + fmtMoney(payment.amountCents) + '</span>' +
       '</div>' +
+      pinNote +
       '<div class="section-label" style="margin-top:0">Valitse maksutapa</div>' +
       rows;
 
@@ -864,57 +911,11 @@
     });
   }
 
-  /* --- NFC-maksun kulku --- */
   function startPayment(card, payment) {
-    if (!card) card = activeCard();
-    if (!payment) payment = Cards.randomMerchant();
-
-    clearTimers();
-    overlay.classList.remove('success', 'error');
-    overlay.classList.add('show');
-    tapAmount.textContent = fmtMoney(payment.amountCents);
-    tapNote.hidden = true;
-    tapNote.textContent = '';
-
-    var blocked = paymentBlocker(card, payment.amountCents);
-    if (blocked) {
-      overlay.classList.add('error');
-      nfcIcon.textContent = '✕';
-      tapStatus.textContent = 'Maksu hylättiin';
-      tapNote.textContent = blocked;
-      tapNote.hidden = false;
-      toast(blocked, 'error');
-      return;
-    }
-
-    overlay.classList.add('pulsing');
-    nfcIcon.textContent = '📶';
-    tapStatus.textContent = 'Napauta maksupäätteeseen · ' + cardTitle(card);
-
-    timers.push(setTimeout(function () {
-      tapStatus.textContent = 'Yhdistetään…';
-    }, 1100));
-
-    timers.push(setTimeout(function () {
-      overlay.classList.remove('pulsing');
-      overlay.classList.add('success');
-      nfcIcon.textContent = '✓';
-      tapStatus.textContent = 'Maksu onnistui';
-    }, 2000));
-
-    timers.push(setTimeout(function () {
-      addTransaction(card, payment, 'Napauta ja maksa');
-      closePayment();
-    }, 3100));
-  }
-
-  function closePayment() {
-    clearTimers();
-    overlay.classList.remove('show', 'pulsing', 'success', 'error');
+    Payment.begin(card || activeCard(), payment || Cards.randomMerchant());
   }
 
   document.getElementById('payBtn').addEventListener('click', openPaymentPicker);
-  document.getElementById('tapCancel').addEventListener('click', closePayment);
 
   /* ================= QR-SKANNAUS (MOCKUP) ================= */
 
