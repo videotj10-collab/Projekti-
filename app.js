@@ -99,6 +99,11 @@
 
   function cardById(id) { return findCard(state.cards, id); }
 
+  /* Arkistoidut kortit pysyvät tallessa mutta poissa lompakosta. */
+  function walletCards() {
+    return state.cards.filter(function (c) { return !c.archived; });
+  }
+
   /* ================= KIRJANPITO ================= */
 
   /* Kortilla olevat vahvistamattomat katevaraukset. */
@@ -125,7 +130,12 @@
   function authCode() {
     return String(Math.floor(100000 + Math.random() * 900000));
   }
-  function activeCard() { return cardById(state.activeCardId) || state.cards[0]; }
+  function activeCard() {
+    var card = cardById(state.activeCardId);
+    if (card && !card.archived) return card;
+    var usable = walletCards();
+    return usable.length ? usable[0] : state.cards[0];
+  }
 
   /* ================= APUFUNKTIOT ================= */
 
@@ -284,13 +294,25 @@
   }
 
   /* Aktiivinen kortti ensin, muut sen takana. */
+  var STACK_VISIBLE = 3;
+
   function orderedCards() {
     var active = activeCard();
-    return [active].concat(state.cards.filter(function (c) { return c.id !== active.id; }));
+    var rest = walletCards().filter(function (c) { return c.id !== active.id; });
+    return active.archived ? rest : [active].concat(rest);
   }
 
   function renderStack() {
     var cards = orderedCards();
+
+    if (cards.length === 0) {
+      stackEl.innerHTML = '<div class="empty-state"><div class="emoji">🗂️</div>' +
+        '<p>Kaikki kortit on arkistoitu. Palauta kortti Kortit-näkymästä.</p></div>';
+      stackEl.style.height = 'auto';
+      return;
+    }
+
+    var hidden = stackExpanded ? 0 : Math.max(0, cards.length - STACK_VISIBLE);
     stackEl.innerHTML = cards.map(function (card, i) {
       var classes = i === 0 ? 'top-card' : '';
       var style;
@@ -298,10 +320,12 @@
         style = 'top:' + (i * (CARD_HEIGHT + CARD_GAP)) + 'px;transform:scale(1);z-index:' + (100 - i) + ';';
       } else {
         style = 'top:' + (i * 14) + 'px;transform:scale(' + (1 - i * 0.05) + ');z-index:' + (100 - i) + ';';
-        if (i > 2) classes += ' hidden-card';
+        if (i >= STACK_VISIBLE) classes += ' hidden-card';
       }
       return cardFaceHTML(card, classes, style);
-    }).join('');
+    }).join('') + (hidden > 0
+      ? '<div class="stack-more">+' + hidden + ' muuta korttia</div>'
+      : '');
     stackEl.style.height = stackExpanded
       ? (cards.length * (CARD_HEIGHT + CARD_GAP)) + 'px'
       : (CARD_HEIGHT + 24) + 'px';
@@ -402,8 +426,13 @@
   }
 
   function renderHistoryFilter() {
+    /* Suodatinpalkki näyttää vain kortit, joilla on tapahtumia — muuten
+     * palkki kasvaa käyttökelvottomaksi, kun kortteja on kymmeniä. */
+    var used = {};
+    state.tx.forEach(function (t) { used[t.cardId] = true; });
+
     var chips = [{ id: 'kaikki', title: 'Kaikki kortit', color: null }].concat(
-      state.cards.map(function (c) {
+      state.cards.filter(function (c) { return used[c.id]; }).map(function (c) {
         return { id: c.id, title: cardTitle(c), color: Cards.getPalette(c.paletteId).from };
       })
     );
@@ -716,28 +745,77 @@
 
   /* ================= KORTTIEN HALLINTA ================= */
 
+  var cardQuery = '';
+  var showArchived = false;
+
+  function matchesQuery(card) {
+    if (!cardQuery) return true;
+    var haystack = [
+      cardTitle(card), Cards.getBank(card.bankId).name, card.type, card.last4, card.holder
+    ].join(' ').toLowerCase();
+    return haystack.indexOf(cardQuery) !== -1;
+  }
+
+  function cardRowHTML(card) {
+    var bank = Cards.getBank(card.bankId);
+    var badges = '';
+    if (card.id === state.defaultCardId && !card.archived) badges += ' <span class="badge default">Oletus</span>';
+    if (card.frozen) badges += ' <span class="badge frozen">Jäädytetty</span>';
+    if (card.limitCents) badges += ' <span class="badge">Kulukatto ' + Money.plain(card.limitCents) + ' €</span>';
+    if (card.archived) badges += ' <span class="badge">Arkistoitu</span>';
+
+    return '<button class="card-row' + (card.archived ? ' archived' : '') + '" data-card="' + card.id + '">' +
+      '<span class="card-swatch" style="background:' + gradient(card) + '"></span>' +
+      '<span class="card-row-info">' +
+        '<span class="card-row-title">' + esc(cardTitle(card)) + badges + '</span>' +
+        '<span class="card-row-meta">' + esc(bank.name) + ' · ' + esc(card.type) +
+          ' · •••• ' + esc(card.last4) + '</span>' +
+      '</span>' +
+      '<span class="card-row-amount">' + fmtBalance(availableCents(card)) + '</span>' +
+    '</button>';
+  }
+
   function renderCardList() {
     var list = document.getElementById('cardList');
-    document.getElementById('cardsSub').textContent =
-      state.cards.length + (state.cards.length === 1 ? ' kortti' : ' korttia') + ' lompakossa';
+    var active = walletCards().filter(matchesQuery);
+    var archived = state.cards.filter(function (c) { return c.archived; }).filter(matchesQuery);
+    var total = walletCards().length;
 
-    list.innerHTML = state.cards.map(function (card) {
-      var bank = Cards.getBank(card.bankId);
-      var badges = '';
-      if (card.id === state.defaultCardId) badges += ' <span class="badge default">Oletus</span>';
-      if (card.frozen) badges += ' <span class="badge frozen">Jäädytetty</span>';
-      if (card.limitCents) badges += ' <span class="badge">Kulukatto ' + Money.plain(card.limitCents) + ' €</span>';
-      return '<button class="card-row" data-card="' + card.id + '">' +
-        '<span class="card-swatch" style="background:' + gradient(card) + '"></span>' +
-        '<span class="card-row-info">' +
-          '<span class="card-row-title">' + esc(cardTitle(card)) + badges + '</span>' +
-          '<span class="card-row-meta">' + esc(bank.name) + ' · ' + esc(card.type) +
-            ' · •••• ' + esc(card.last4) + '</span>' +
-        '</span>' +
-        '<span class="card-row-amount">' + fmtBalance(availableCents(card)) + '</span>' +
-      '</button>';
-    }).join('');
+    document.getElementById('cardsSub').textContent =
+      total + (total === 1 ? ' kortti' : ' korttia') + ' lompakossa' +
+      (state.cards.length > total ? ' · ' + (state.cards.length - total) + ' arkistossa' : '');
+
+    var html = '';
+    if (active.length === 0 && archived.length === 0) {
+      html = '<div class="empty-state"><div class="emoji">🔎</div>' +
+        '<p>Haku ei tuottanut tuloksia.</p></div>';
+    } else {
+      html += active.map(cardRowHTML).join('');
+      if (archived.length > 0) {
+        html += '<div class="list-group-label">' +
+          '<span>Arkistoidut (' + archived.length + ')</span>' +
+          '<button class="link-btn" id="toggleArchived">' +
+            (showArchived ? 'Piilota' : 'Näytä') + '</button>' +
+        '</div>';
+        if (showArchived) html += archived.map(cardRowHTML).join('');
+      }
+    }
+    list.innerHTML = html;
+
+    var toggle = document.getElementById('toggleArchived');
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        showArchived = !showArchived;
+        renderCardList();
+      });
+    }
   }
+
+  var cardSearch = document.getElementById('cardSearch');
+  cardSearch.addEventListener('input', function () {
+    cardQuery = cardSearch.value.trim().toLowerCase();
+    renderCardList();
+  });
 
   document.getElementById('cardList').addEventListener('click', function (e) {
     var row = e.target.closest('.card-row');
@@ -774,8 +852,12 @@
       '</div>' +
       '<button class="solid-btn" id="cSave">Tallenna muutokset</button>' +
       '<div style="height:10px"></div>' +
-      '<button class="ghost-btn" id="setDefaultBtn"' + (isDefault ? ' disabled' : '') + '>' +
+      '<button class="ghost-btn" id="setDefaultBtn"' + (isDefault || card.archived ? ' disabled' : '') + '>' +
         (isDefault ? 'Tämä on oletuskortti' : 'Aseta oletuskortiksi') +
+      '</button>' +
+      '<div style="height:10px"></div>' +
+      '<button class="ghost-btn" id="archiveBtn">' +
+        (card.archived ? 'Palauta lompakkoon' : 'Arkistoi kortti') +
       '</button>' +
       '<div style="height:10px"></div>' +
       '<button class="danger-btn" id="deleteCardBtn">Poista kortti</button>';
@@ -822,7 +904,11 @@
         }
       });
 
-      if (!isDefault) {
+      body.querySelector('#archiveBtn').addEventListener('click', function () {
+        toggleArchive(card.id);
+      });
+
+      if (!isDefault && !card.archived) {
         body.querySelector('#setDefaultBtn').addEventListener('click', function () {
           state.defaultCardId = card.id;
           saveState();
@@ -838,6 +924,27 @@
         });
       });
     });
+  }
+
+  /* Arkistointi piilottaa kortin lompakosta mutta säilyttää historian. */
+  function toggleArchive(cardId) {
+    var card = cardById(cardId);
+    if (!card) return;
+
+    if (!card.archived && walletCards().length === 1) {
+      toast('Lompakossa on oltava vähintään yksi kortti', 'error');
+      return;
+    }
+
+    card.archived = !card.archived;
+    if (card.archived) {
+      if (state.defaultCardId === cardId) state.defaultCardId = walletCards()[0].id;
+      if (state.activeCardId === cardId) state.activeCardId = state.defaultCardId;
+    }
+    saveState();
+    renderAll();
+    closeSheet();
+    toast(cardTitle(card) + (card.archived ? ' arkistoitiin' : ' palautettiin lompakkoon'), 'ok');
   }
 
   function removeCard(cardId) {
