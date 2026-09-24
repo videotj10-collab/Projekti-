@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lompakko</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <div class="topbar" id="topbar">
+    <h1 id="pageTitle">Lompakko</h1>
+    <div class="avatar" id="avatar">MG</div>
+  </div>
+
+  <div class="screens">
+
+    <!-- LOMPAKKO -->
+    <div class="screen active" id="screen-wallet">
+      <div class="card-stack" id="cardStack"></div>
+
+      <div class="balance-block">
+        <div class="balance-label">Käytettävissä</div>
+        <div class="balance-amount" id="balanceText">0,00 €</div>
+      </div>
+
+      <button class="pay-btn" id="payBtn">Napauta maksaaksesi</button>
+
+      <div class="section-label">Viimeisimmät</div>
+      <div id="recentTx"></div>
+    </div>
+
+    <!-- HISTORIA -->
+    <div class="screen" id="screen-history">
+      <div class="history-header">
+        <h2>Historia</h2>
+        <div class="history-sub" id="historySub">Ei vielä tapahtumia</div>
+      </div>
+      <div id="historyList"></div>
+    </div>
+
+    <!-- SKANNAUS -->
+    <div class="screen" id="screen-scan">
+      <div class="scan-wrap">
+        <h2>Skannaa maksaaksesi</h2>
+        <div class="scan-sub">Kohdista kauppiaan QR-koodiin</div>
+        <div class="viewfinder">
+          <div class="fake-qr">
+            <svg width="120" height="120" viewBox="0 0 100 100" aria-hidden="true">
+              <rect x="8" y="8" width="24" height="24" fill="none" stroke="#8e8e93" stroke-width="4"/>
+              <rect x="16" y="16" width="8" height="8" fill="#8e8e93"/>
+              <rect x="68" y="8" width="24" height="24" fill="none" stroke="#8e8e93" stroke-width="4"/>
+              <rect x="76" y="16" width="8" height="8" fill="#8e8e93"/>
+              <rect x="8" y="68" width="24" height="24" fill="none" stroke="#8e8e93" stroke-width="4"/>
+              <rect x="16" y="76" width="8" height="8" fill="#8e8e93"/>
+              <rect x="44" y="8" width="6" height="6" fill="#8e8e93"/>
+              <rect x="56" y="20" width="6" height="6" fill="#8e8e93"/>
+              <rect x="44" y="44" width="12" height="12" fill="#8e8e93"/>
+              <rect x="62" y="44" width="6" height="6" fill="#8e8e93"/>
+              <rect x="44" y="62" width="6" height="6" fill="#8e8e93"/>
+              <rect x="62" y="62" width="18" height="18" fill="#8e8e93"/>
+              <rect x="8" y="44" width="6" height="6" fill="#8e8e93"/>
+              <rect x="20" y="56" width="6" height="6" fill="#8e8e93"/>
+            </svg>
+          </div>
+          <div class="scan-line"></div>
+          <div class="vf-corner tl"></div>
+          <div class="vf-corner tr"></div>
+          <div class="vf-corner bl"></div>
+          <div class="vf-corner br"></div>
+        </div>
+        <div class="scan-hint">Simuloitu kamera — ei oikeaa skannausta</div>
+        <button class="scan-btn" id="fakeScanBtn">Simuloi QR-tunnistus</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="navbar">
+    <button class="navbtn active" data-screen="wallet">
+      <span class="icon">◧</span>
+      <span class="label">Lompakko</span>
+    </button>
+    <button class="navbtn" data-screen="history">
+      <span class="icon">≡</span>
+      <span class="label">Historia</span>
+    </button>
+    <button class="navbtn" data-screen="scan">
+      <span class="icon">▣</span>
+      <span class="label">Skannaa</span>
+    </button>
+  </div>
+
+  <!-- NFC-MAKSUN PEITTOKUVA -->
+  <div class="tap-overlay" id="tapOverlay">
+    <div class="nfc-ring-wrap">
+      <div class="nfc-ring"></div>
+      <div class="nfc-ring"></div>
+      <div class="nfc-ring"></div>
+      <div class="nfc-center"><span id="nfcIcon">📶</span></div>
+    </div>
+    <div class="tap-status" id="tapStatus">Napauta laitetta maksupäätteeseen</div>
+    <div class="tap-amount" id="tapAmount"></div>
+    <button class="tap-cancel" id="tapCancel">Peruuta</button>
+  </div>
+
+</div>
+
+<script src="cards.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
