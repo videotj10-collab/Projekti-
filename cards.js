@@ -13,11 +13,11 @@
   var PALETTES = [
     { id: 'meri',           name: 'Meri',           from: '#1b4f9c', to: '#07182f', ink: '#ffffff' },
     { id: 'yo',             name: 'Yö',             from: '#3a3a3c', to: '#0a0a0a', ink: '#ffffff' },
-    { id: 'metsa',          name: 'Metsä',          from: '#1f8a52', to: '#07301d', ink: '#ffffff' },
-    { id: 'auringonlasku',  name: 'Auringonlasku',  from: '#f2761b', to: '#6b2504', ink: '#ffffff' },
-    { id: 'turkoosi',       name: 'Turkoosi',       from: '#12a0a3', to: '#04312f', ink: '#ffffff' },
+    { id: 'metsa',          name: 'Metsä',          from: '#1d844e', to: '#07301d', ink: '#ffffff' },
+    { id: 'auringonlasku',  name: 'Auringonlasku',  from: '#b75914', to: '#6b2504', ink: '#ffffff' },
+    { id: 'turkoosi',       name: 'Turkoosi',       from: '#0e7f82', to: '#04312f', ink: '#ffffff' },
     { id: 'viini',          name: 'Viini',          from: '#8e2145', to: '#2b0a16', ink: '#ffffff' },
-    { id: 'laventeli',      name: 'Laventeli',      from: '#7a68e0', to: '#211a4f', ink: '#ffffff' },
+    { id: 'laventeli',      name: 'Laventeli',      from: '#7563d7', to: '#211a4f', ink: '#ffffff' },
     { id: 'hopea',          name: 'Hopea',          from: '#e8e8ed', to: '#b0b0b8', ink: '#0a0a0a' }
   ];
 

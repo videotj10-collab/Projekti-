@@ -201,9 +201,10 @@
     toastEl.textContent = message;
     toastEl.className = 'toast show' + (kind ? ' ' + kind : '');
     clearTimeout(toastTimer);
+    /* Ruudunlukijan ja hitaamman lukijan on ehdittävä mukaan. */
     toastTimer = setTimeout(function () {
       toastEl.className = 'toast';
-    }, 2600);
+    }, 6000);
   }
 
   /* ================= TUNNISTAUTUMINEN ================= */
@@ -243,26 +244,73 @@
   var sheetTitle = document.getElementById('sheetTitle');
   var sheetBody = document.getElementById('sheetBody');
 
+  var sheetOpener = null;
+
+  function sheetFocusable() {
+    var nodes = sheet.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    return Array.prototype.filter.call(nodes, function (n) { return n.offsetParent !== null; });
+  }
+
   function openSheet(title, html, onMount) {
+    sheetOpener = document.activeElement;
     sheetTitle.textContent = title;
     sheetBody.innerHTML = html;
     sheet.classList.add('show');
     sheetBackdrop.classList.add('show');
     if (onMount) onMount(sheetBody);
+
+    /* Fokus siirtyy paneeliin eikä pääse karkaamaan sen taakse. */
+    requestAnimationFrame(function () {
+      var focusable = sheetFocusable();
+      if (focusable.length) focusable[0].focus();
+    });
   }
 
   function closeSheet() {
+    if (!sheet.classList.contains('show')) return;
     sheet.classList.remove('show');
     sheetBackdrop.classList.remove('show');
+    if (sheetOpener && sheetOpener.focus) sheetOpener.focus();
+    sheetOpener = null;
   }
+
+  sheet.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      closeSheet();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    var focusable = sheetFocusable();
+    if (focusable.length === 0) return;
+    var first = focusable[0];
+    var last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
 
   document.getElementById('sheetClose').addEventListener('click', closeSheet);
   sheetBackdrop.addEventListener('click', closeSheet);
 
   /* ================= KORTTIPINO ================= */
 
-  var CARD_HEIGHT = 190;
-  var CARD_GAP = 16;
+  /* Kortin mitat tulevat CSS:stä rem-yksiköinä, joten pino pysyy kasassa
+   * myös silloin kun käyttäjä on suurentanut selaimen tekstikokoa. */
+  var CARD_HEIGHT_REM = 11.875;
+  var CARD_GAP_REM = 1;
+
+  function rootFontSize() {
+    return parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  }
+
+  function cardHeight() { return CARD_HEIGHT_REM * rootFontSize(); }
+  function cardGap() { return CARD_GAP_REM * rootFontSize(); }
   var stackEl = document.getElementById('cardStack');
   var stackExpanded = false;
 
@@ -317,9 +365,10 @@
       var classes = i === 0 ? 'top-card' : '';
       var style;
       if (stackExpanded) {
-        style = 'top:' + (i * (CARD_HEIGHT + CARD_GAP)) + 'px;transform:scale(1);z-index:' + (100 - i) + ';';
+        style = 'top:' + (i * (cardHeight() + cardGap())) + 'px;transform:scale(1);z-index:' + (100 - i) + ';';
       } else {
-        style = 'top:' + (i * 14) + 'px;transform:scale(' + (1 - i * 0.05) + ');z-index:' + (100 - i) + ';';
+        style = 'top:' + (i * 0.875 * rootFontSize()) + 'px;' +
+          'transform:scale(' + (1 - i * 0.05) + ');z-index:' + (100 - i) + ';';
         if (i >= STACK_VISIBLE) classes += ' hidden-card';
       }
       return cardFaceHTML(card, classes, style);
@@ -327,9 +376,17 @@
       ? '<div class="stack-more">+' + hidden + ' muuta korttia</div>'
       : '');
     stackEl.style.height = stackExpanded
-      ? (cards.length * (CARD_HEIGHT + CARD_GAP)) + 'px'
-      : (CARD_HEIGHT + 24) + 'px';
+      ? (cards.length * (cardHeight() + cardGap())) + 'px'
+      : (cardHeight() + 1.5 * rootFontSize()) + 'px';
   }
+
+  /* Pinon sijainnit lasketaan pikseleinä, joten ne on laskettava uudelleen,
+   * jos ikkunan koko tai selaimen tekstikoko muuttuu kesken käytön. */
+  var stackResizeTimer = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(stackResizeTimer);
+    stackResizeTimer = setTimeout(renderStack, 120);
+  });
 
   stackEl.addEventListener('click', function (e) {
     var el = e.target.closest('.paycard');
@@ -847,7 +904,9 @@
           '<span class="settings-label">Jäädytä kortti' +
             '<span class="settings-sub">Estää kaikki maksut tällä kortilla</span>' +
           '</span>' +
-          '<button class="toggle' + (card.frozen ? ' on' : '') + '" id="cFreeze" role="switch"></button>' +
+          '<button class="toggle' + (card.frozen ? ' on' : '') + '" id="cFreeze" role="switch" ' +
+            'aria-checked="' + (card.frozen ? 'true' : 'false') + '" ' +
+            'aria-label="Jäädytä kortti"></button>' +
         '</div>' +
       '</div>' +
       '<button class="solid-btn" id="cSave">Tallenna muutokset</button>' +
@@ -869,6 +928,7 @@
       freezeBtn.addEventListener('click', function () {
         frozen = !frozen;
         freezeBtn.classList.toggle('on', frozen);
+        freezeBtn.setAttribute('aria-checked', String(frozen));
       });
 
       body.querySelector('#cSave').addEventListener('click', function () {
@@ -1063,7 +1123,9 @@
       if (el) el.classList.toggle('active', s === name);
     });
     document.querySelectorAll('.navbtn').forEach(function (b) {
-      b.classList.toggle('active', b.dataset.screen === name);
+      var current = b.dataset.screen === name;
+      b.classList.toggle('active', current);
+      b.setAttribute('aria-selected', String(current));
     });
     document.getElementById('pageTitle').textContent = TITLES[name] || 'Lompakko';
   }

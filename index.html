@@ -26,7 +26,7 @@
   <div class="screens">
 
     <!-- LOMPAKKO -->
-    <div class="screen active" id="screen-wallet">
+    <div class="screen active" id="screen-wallet" role="tabpanel" aria-labelledby="tab-wallet" tabindex="0">
       <div class="card-stack" id="cardStack"></div>
 
       <div class="balance-block">
@@ -42,7 +42,7 @@
     </div>
 
     <!-- KORTIT -->
-    <div class="screen" id="screen-cards">
+    <div class="screen" id="screen-cards" role="tabpanel" aria-labelledby="tab-cards" tabindex="0">
       <div class="history-header">
         <h2>Kortit</h2>
         <div class="history-sub" id="cardsSub">Hallitse lompakon kortteja</div>
@@ -59,7 +59,7 @@
     </div>
 
     <!-- HISTORIA -->
-    <div class="screen" id="screen-history">
+    <div class="screen" id="screen-history" role="tabpanel" aria-labelledby="tab-history" tabindex="0">
       <div class="history-header">
         <h2>Historia</h2>
         <div class="history-sub" id="historySub">Ei vielä tapahtumia</div>
@@ -69,7 +69,7 @@
     </div>
 
     <!-- SKANNAUS -->
-    <div class="screen" id="screen-scan">
+    <div class="screen" id="screen-scan" role="tabpanel" aria-labelledby="tab-scan" tabindex="0">
       <div class="scan-wrap">
         <h2>Skannaa maksaaksesi</h2>
         <div class="scan-sub">Kohdista kauppiaan QR-koodiin</div>
@@ -104,7 +104,7 @@
     </div>
 
     <!-- ASETUKSET -->
-    <div class="screen" id="screen-settings">
+    <div class="screen" id="screen-settings" role="tabpanel" aria-labelledby="tab-settings" tabindex="0">
       <div class="history-header">
         <h2>Asetukset</h2>
         <div class="history-sub">Lompakon ja korttien asetukset</div>
@@ -176,28 +176,33 @@
 
   </div>
 
-  <div class="navbar">
-    <button class="navbtn active" data-screen="wallet">
-      <span class="icon">◧</span>
+  <nav class="navbar" role="tablist" aria-label="Päänavigaatio">
+    <button class="navbtn active" data-screen="wallet" role="tab" id="tab-wallet"
+            aria-selected="true" aria-controls="screen-wallet">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5.5" width="19" height="14" rx="3"/><path d="M2.5 10h19"/><circle cx="17.5" cy="15" r="1.2" fill="currentColor" stroke="none"/></svg>
       <span class="label">Lompakko</span>
     </button>
-    <button class="navbtn" data-screen="cards">
-      <span class="icon">▤</span>
+    <button class="navbtn" data-screen="cards" role="tab" id="tab-cards"
+            aria-selected="false" aria-controls="screen-cards">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="7.5" width="15" height="11" rx="2.5"/><path d="M6.5 4.5h11a3 3 0 0 1 3 3v8"/></svg>
       <span class="label">Kortit</span>
     </button>
-    <button class="navbtn" data-screen="history">
-      <span class="icon">≡</span>
+    <button class="navbtn" data-screen="history" role="tab" id="tab-history"
+            aria-selected="false" aria-controls="screen-history">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
       <span class="label">Historia</span>
     </button>
-    <button class="navbtn" data-screen="scan">
-      <span class="icon">▣</span>
+    <button class="navbtn" data-screen="scan" role="tab" id="tab-scan"
+            aria-selected="false" aria-controls="screen-scan">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5V6a2 2 0 0 1 2-2h2.5M15.5 4H18a2 2 0 0 1 2 2v2.5M20 15.5V18a2 2 0 0 1-2 2h-2.5M8.5 20H6a2 2 0 0 1-2-2v-2.5"/><path d="M4 12h16"/></svg>
       <span class="label">Skannaa</span>
     </button>
-    <button class="navbtn" data-screen="settings">
-      <span class="icon">⚙</span>
+    <button class="navbtn" data-screen="settings" role="tab" id="tab-settings"
+            aria-selected="false" aria-controls="screen-settings">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
       <span class="label">Asetukset</span>
     </button>
-  </div>
+  </nav>
 
   <!-- ALAPANEELI (lomakkeet ja valinnat) -->
   <div class="sheet-backdrop" id="sheetBackdrop"></div>
